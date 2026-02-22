@@ -1,0 +1,36 @@
+import { BashResult, EditResult, FireboxEditOptions, FireboxExecOptions, FireboxMode, FireboxSDKOptions, FireboxSDKState, PreparedBashCommand, ReadResult, WriteResult } from "./types.js";
+export * from "./types.js";
+export declare class FireboxSDK {
+    private readonly options;
+    private readonly client;
+    private readonly store;
+    private state;
+    private loaded;
+    constructor(options?: FireboxSDKOptions);
+    initialize(): Promise<FireboxSDKState>;
+    getState(): Promise<FireboxSDKState>;
+    getMode(): Promise<FireboxMode>;
+    shouldIgnoreAnthropicRuntime(): Promise<boolean>;
+    setMode(mode: FireboxMode): Promise<FireboxSDKState>;
+    setDefaultImage(name: string, yamlPath?: string, ensureNow?: boolean): Promise<FireboxSDKState>;
+    prepareBashCommand(command: string, options?: FireboxExecOptions): Promise<PreparedBashCommand | null>;
+    bash(command: string, options?: FireboxExecOptions): Promise<BashResult>;
+    read(filePath: string, options?: FireboxExecOptions): Promise<ReadResult>;
+    write(filePath: string, content: string, options?: FireboxExecOptions): Promise<WriteResult>;
+    edit(filePath: string, oldText: string, newText: string, options?: FireboxEditOptions): Promise<EditResult>;
+    diffSession(sessionId: string): Promise<string>;
+    applySession(sessionId: string): Promise<string>;
+    stopSession(sessionId: string): Promise<void>;
+    removeSession(sessionId: string): Promise<void>;
+    private ensureRuntimeReady;
+    private ensureImageConfig;
+    private writeDefaultImageYaml;
+    private resolveWorkspace;
+    private resolveLocalPath;
+    private resolveWorkspaceBoundPath;
+    private hostToSandboxPath;
+    private ensureSessionSandbox;
+    private snapshot;
+    private ensureLoaded;
+    private saveState;
+}

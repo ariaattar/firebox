@@ -1,0 +1,4 @@
+firebox
+.tmpmount/
+node_modules/
+sdk/firebox-sdk/node_modules/
