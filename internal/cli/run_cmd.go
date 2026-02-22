@@ -20,6 +20,12 @@ func newRunCmd() *cobra.Command {
 		cow            string
 		cowRoot        string
 		network        string
+		networkAllow   []string
+		networkDeny    []string
+		fileAllowPaths []string
+		fileDenyPaths  []string
+		fileAllowExts  []string
+		fileDenyExts   []string
 		profile        string
 		workdir        string
 		allowHostWrite bool
@@ -65,21 +71,28 @@ func newRunCmd() *cobra.Command {
 			}
 			defer cancel()
 
+			spec := model.RunSpec{
+				Command:        runCommand,
+				Env:            envVars,
+				Mounts:         parsedMounts,
+				Cow:            globalCow,
+				CowRoot:        rootCow,
+				Network:        netMode,
+				NetworkAllow:   networkAllow,
+				NetworkDeny:    networkDeny,
+				FileAllowPaths: fileAllowPaths,
+				FileDenyPaths:  fileDenyPaths,
+				FileAllowExts:  fileAllowExts,
+				FileDenyExts:   fileDenyExts,
+				Profile:        profile,
+				Workdir:        workdir,
+				AllowHostWrite: allowHostWrite,
+				StrictBudget:   strictBudget,
+				TimeoutMs:      timeoutMs,
+			}
 			req := api.RunRequest{
 				Interactive: isInteractive(),
-				Spec: model.RunSpec{
-					Command:        runCommand,
-					Env:            envVars,
-					Mounts:         parsedMounts,
-					Cow:            globalCow,
-					CowRoot:        rootCow,
-					Network:        netMode,
-					Profile:        profile,
-					Workdir:        workdir,
-					AllowHostWrite: allowHostWrite,
-					StrictBudget:   strictBudget,
-					TimeoutMs:      timeoutMs,
-				},
+				Spec:        spec,
 			}
 
 			resp, err := client.Run(ctx, req)
@@ -111,7 +124,13 @@ func newRunCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&cow, "cow", "on", "Global CoW mode (on|off)")
 	cmd.Flags().StringVar(&cowRoot, "cow-root", "", "Rootfs CoW mode override (on|off)")
-	cmd.Flags().StringVarP(&network, "network", "n", string(model.NetworkNAT), "Network mode (nat)")
+	cmd.Flags().StringVarP(&network, "network", "n", string(model.NetworkNAT), "Network mode (nat|none)")
+	cmd.Flags().StringArrayVar(&networkAllow, "network-allow", nil, "Allow outbound destination (IP/CIDR/hostname/domain, repeatable)")
+	cmd.Flags().StringArrayVar(&networkDeny, "network-deny", nil, "Deny outbound destination (IP/CIDR/hostname/domain, repeatable)")
+	cmd.Flags().StringArrayVar(&fileAllowPaths, "file-allow-path", nil, "Allow host mount path prefix/glob (absolute)")
+	cmd.Flags().StringArrayVar(&fileDenyPaths, "file-deny-path", nil, "Deny host mount path prefix/glob (absolute)")
+	cmd.Flags().StringArrayVar(&fileAllowExts, "file-allow-ext", nil, "Allow mounted file extensions (e.g. .go, .md)")
+	cmd.Flags().StringArrayVar(&fileDenyExts, "file-deny-ext", nil, "Deny mounted file extensions (e.g. .pem)")
 	cmd.Flags().StringVar(&profile, "profile", "default", "Sandbox profile")
 	cmd.Flags().BoolVar(&allowHostWrite, "allow-host-write", false, "Allow direct host writes for rw mounts with cow=off")
 	cmd.Flags().BoolVar(&strictBudget, "strict-budget", true, "Fail command when latency exceeds budget")
@@ -143,7 +162,9 @@ func parseNetwork(v string) (model.NetworkMode, error) {
 	switch v {
 	case string(model.NetworkNAT):
 		return model.NetworkNAT, nil
+	case string(model.NetworkNone):
+		return model.NetworkNone, nil
 	default:
-		return model.NetworkNAT, fmt.Errorf("invalid --network value %q, expected nat", v)
+		return model.NetworkNAT, fmt.Errorf("invalid --network value %q, expected nat|none", v)
 	}
 }

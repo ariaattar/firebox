@@ -297,10 +297,12 @@ func buildImage(paths config.Paths, name, absYAML string, rebuild bool) (imageRe
 }
 
 func setActiveImage(paths config.Paths, rec imageRecord) error {
-	cfg := config.RuntimeConfig{
-		InstanceName: rec.InstanceName,
-		ImageName:    rec.Name,
+	cfg, err := config.LoadRuntimeConfig(paths.Runtime)
+	if err != nil {
+		return err
 	}
+	cfg.InstanceName = rec.InstanceName
+	cfg.ImageName = rec.Name
 	return config.SaveRuntimeConfig(paths.Runtime, cfg)
 }
 

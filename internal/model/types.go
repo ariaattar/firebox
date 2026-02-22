@@ -52,6 +52,12 @@ type RunSpec struct {
 	Cow            CowMode     `json:"cow"`
 	CowRoot        CowMode     `json:"cow_root,omitempty"`
 	Network        NetworkMode `json:"network"`
+	NetworkAllow   []string    `json:"network_allow,omitempty"`
+	NetworkDeny    []string    `json:"network_deny,omitempty"`
+	FileAllowPaths []string    `json:"file_allow_paths,omitempty"`
+	FileDenyPaths  []string    `json:"file_deny_paths,omitempty"`
+	FileAllowExts  []string    `json:"file_allow_exts,omitempty"`
+	FileDenyExts   []string    `json:"file_deny_exts,omitempty"`
 	Profile        string      `json:"profile,omitempty"`
 	Workdir        string      `json:"workdir,omitempty"`
 	SessionID      string      `json:"session_id,omitempty"`

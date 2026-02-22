@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"firebox/internal/config"
 )
 
 func TestImageInstanceName(t *testing.T) {
@@ -44,5 +46,42 @@ func TestImageCatalogRoundTrip(t *testing.T) {
 	}
 	if rec.YAMLFile != "/tmp/dev.yaml" {
 		t.Fatalf("YAMLFile = %q, want %q", rec.YAMLFile, "/tmp/dev.yaml")
+	}
+}
+
+func TestSetActiveImagePreservesRuntimePolicy(t *testing.T) {
+	root := t.TempDir()
+	paths := config.Paths{
+		Runtime: filepath.Join(root, "runtime.json"),
+	}
+
+	initial := config.RuntimeConfig{
+		InstanceName: "firebox-host",
+		ImageName:    "default",
+		Policy: config.RuntimePolicyConfig{
+			NetworkAllow: []string{"github.com"},
+		},
+	}
+	if err := config.SaveRuntimeConfig(paths.Runtime, initial); err != nil {
+		t.Fatalf("SaveRuntimeConfig() error = %v", err)
+	}
+
+	rec := imageRecord{Name: "dev", InstanceName: "firebox-img-dev"}
+	if err := setActiveImage(paths, rec); err != nil {
+		t.Fatalf("setActiveImage() error = %v", err)
+	}
+
+	got, err := config.LoadRuntimeConfig(paths.Runtime)
+	if err != nil {
+		t.Fatalf("LoadRuntimeConfig() error = %v", err)
+	}
+	if got.InstanceName != rec.InstanceName {
+		t.Fatalf("InstanceName = %q, want %q", got.InstanceName, rec.InstanceName)
+	}
+	if got.ImageName != rec.Name {
+		t.Fatalf("ImageName = %q, want %q", got.ImageName, rec.Name)
+	}
+	if len(got.Policy.NetworkAllow) != 1 || got.Policy.NetworkAllow[0] != "github.com" {
+		t.Fatalf("Policy.NetworkAllow = %#v, want [github.com]", got.Policy.NetworkAllow)
 	}
 }

@@ -78,3 +78,25 @@ func TestMergeMountInputsWithSandbox(t *testing.T) {
 		t.Fatalf("sandbox mount Cow = %q, want on", mounts[1].Cow)
 	}
 }
+
+func TestParseNetwork(t *testing.T) {
+	got, err := parseNetwork("nat")
+	if err != nil {
+		t.Fatalf("parseNetwork(nat) error = %v", err)
+	}
+	if got != model.NetworkNAT {
+		t.Fatalf("parseNetwork(nat) = %q, want nat", got)
+	}
+
+	got, err = parseNetwork("none")
+	if err != nil {
+		t.Fatalf("parseNetwork(none) error = %v", err)
+	}
+	if got != model.NetworkNone {
+		t.Fatalf("parseNetwork(none) = %q, want none", got)
+	}
+
+	if _, err := parseNetwork("host"); err == nil {
+		t.Fatal("expected error for invalid network mode")
+	}
+}
