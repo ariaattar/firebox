@@ -35,6 +35,12 @@ func newSandboxCreateCmd() *cobra.Command {
 		cow            string
 		cowRoot        string
 		network        string
+		networkAllow   []string
+		networkDeny    []string
+		fileAllowPaths []string
+		fileDenyPaths  []string
+		fileAllowExts  []string
+		fileDenyExts   []string
 		profile        string
 		workdir        string
 		allowHostWrite bool
@@ -73,21 +79,25 @@ func newSandboxCreateCmd() *cobra.Command {
 			}
 			defer cancel()
 
-			resp, err := client.CreateSandbox(ctx, api.CreateSandboxRequest{
-				ID: id,
-				Spec: model.RunSpec{
-					Env:            envVars,
-					Mounts:         parsedMounts,
-					Cow:            globalCow,
-					CowRoot:        rootCow,
-					Network:        netMode,
-					Profile:        profile,
-					Workdir:        workdir,
-					AllowHostWrite: allowHostWrite,
-					StrictBudget:   strictBudget,
-					TimeoutMs:      timeoutMs,
-				},
-			})
+			spec := model.RunSpec{
+				Env:            envVars,
+				Mounts:         parsedMounts,
+				Cow:            globalCow,
+				CowRoot:        rootCow,
+				Network:        netMode,
+				NetworkAllow:   networkAllow,
+				NetworkDeny:    networkDeny,
+				FileAllowPaths: fileAllowPaths,
+				FileDenyPaths:  fileDenyPaths,
+				FileAllowExts:  fileAllowExts,
+				FileDenyExts:   fileDenyExts,
+				Profile:        profile,
+				Workdir:        workdir,
+				AllowHostWrite: allowHostWrite,
+				StrictBudget:   strictBudget,
+				TimeoutMs:      timeoutMs,
+			}
+			resp, err := client.CreateSandbox(ctx, api.CreateSandboxRequest{ID: id, Spec: spec})
 			if err != nil {
 				return err
 			}
@@ -103,7 +113,13 @@ func newSandboxCreateCmd() *cobra.Command {
 	cmd.Flags().StringArrayVarP(&env, "env", "e", nil, "Environment variable (KEY=VALUE or KEY)")
 	cmd.Flags().StringVar(&cow, "cow", "on", "Global CoW mode (on|off)")
 	cmd.Flags().StringVar(&cowRoot, "cow-root", "", "Rootfs CoW mode override (on|off)")
-	cmd.Flags().StringVarP(&network, "network", "n", string(model.NetworkNAT), "Network mode (nat)")
+	cmd.Flags().StringVarP(&network, "network", "n", string(model.NetworkNAT), "Network mode (nat|none)")
+	cmd.Flags().StringArrayVar(&networkAllow, "network-allow", nil, "Allow outbound destination (IP/CIDR/hostname/domain, repeatable)")
+	cmd.Flags().StringArrayVar(&networkDeny, "network-deny", nil, "Deny outbound destination (IP/CIDR/hostname/domain, repeatable)")
+	cmd.Flags().StringArrayVar(&fileAllowPaths, "file-allow-path", nil, "Allow host mount path prefix/glob (absolute)")
+	cmd.Flags().StringArrayVar(&fileDenyPaths, "file-deny-path", nil, "Deny host mount path prefix/glob (absolute)")
+	cmd.Flags().StringArrayVar(&fileAllowExts, "file-allow-ext", nil, "Allow mounted file extensions (e.g. .go, .md)")
+	cmd.Flags().StringArrayVar(&fileDenyExts, "file-deny-ext", nil, "Deny mounted file extensions (e.g. .pem)")
 	cmd.Flags().StringVar(&profile, "profile", "default", "Sandbox profile")
 	cmd.Flags().StringVarP(&workdir, "workdir", "w", "", "Working directory")
 	cmd.Flags().BoolVar(&allowHostWrite, "allow-host-write", false, "Allow direct host writes for rw mounts with cow=off")

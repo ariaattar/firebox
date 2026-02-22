@@ -18,6 +18,7 @@ import (
 
 	"firebox/internal/config"
 	"firebox/internal/model"
+	"firebox/internal/policy"
 )
 
 const (
@@ -138,9 +139,6 @@ func (b *Backend) Warm(ctx context.Context, _ int) error {
 }
 
 func (b *Backend) Run(ctx context.Context, spec model.RunSpec) (model.ExecResult, error) {
-	if spec.Network == model.NetworkNone {
-		return model.ExecResult{}, errors.New("network=none is not implemented yet for lima-firecracker backend")
-	}
 	if len(spec.Command) == 0 {
 		spec.Command = []string{"/bin/bash"}
 	}
@@ -1178,6 +1176,7 @@ func (b *Backend) buildRunScript(spec model.RunSpec) string {
 	sb.WriteString("mkdir -p \"${RUN_ROOT}\" \"${SESSION_ROOT}\" \"${SESSION_ROOT}/mounts\"\n")
 	sb.WriteString("declare -a BIND_TARGETS=()\n")
 	sb.WriteString("declare -a OVERLAY_MERGED=()\n")
+	networkPolicyEnabled := appendNetworkPolicyScript(&sb, spec)
 	sb.WriteString("\n")
 	sb.WriteString("prepare_target() {\n")
 	sb.WriteString("  local src=\"$1\"\n")
@@ -1236,6 +1235,9 @@ func (b *Backend) buildRunScript(spec model.RunSpec) string {
 	sb.WriteString("cleanup() {\n")
 	sb.WriteString("  set +e\n")
 	sb.WriteString("  cd /\n")
+	if networkPolicyEnabled {
+		sb.WriteString("  cleanup_network_policy\n")
+	}
 	sb.WriteString("  for ((i=${#BIND_TARGETS[@]}-1; i>=0; i--)); do\n")
 	sb.WriteString("    t=\"${BIND_TARGETS[$i]}\"\n")
 	sb.WriteString("    if mountpoint -q \"$t\"; then sudo -n umount \"$t\" || sudo umount \"$t\" || true; fi\n")
@@ -1248,6 +1250,9 @@ func (b *Backend) buildRunScript(spec model.RunSpec) string {
 	sb.WriteString("  if [ \"${PERSIST_SESSION}\" != \"1\" ]; then rm -rf --one-file-system \"${SESSION_ROOT}\"; fi\n")
 	sb.WriteString("}\n")
 	sb.WriteString("trap cleanup EXIT INT TERM\n")
+	if networkPolicyEnabled {
+		sb.WriteString("setup_network_policy\n")
+	}
 
 	for i, m := range spec.Mounts {
 		host := path.Clean(m.HostPath)
@@ -1327,6 +1332,131 @@ func (b *Backend) buildRunScript(spec model.RunSpec) string {
 	sb.WriteString("\n")
 
 	return sb.String()
+}
+
+func appendNetworkPolicyScript(sb *strings.Builder, spec model.RunSpec) bool {
+	networkPolicyEnabled := spec.Network == model.NetworkNone || len(spec.NetworkAllow) > 0 || len(spec.NetworkDeny) > 0
+	if !networkPolicyEnabled {
+		return false
+	}
+
+	allowMode := spec.Network == model.NetworkNone || len(spec.NetworkAllow) > 0
+	allow4, allow6, allowHosts := policy.SplitNetworkDestinations(spec.NetworkAllow)
+	deny4, deny6, denyHosts := policy.SplitNetworkDestinations(spec.NetworkDeny)
+	hasHostPolicy := len(allowHosts) > 0 || len(denyHosts) > 0
+
+	needIPv4 := spec.Network == model.NetworkNone || len(spec.NetworkAllow) > 0 || len(allow4) > 0 || len(deny4) > 0 || hasHostPolicy
+	needIPv6 := spec.Network == model.NetworkNone || len(spec.NetworkAllow) > 0 || len(allow6) > 0 || len(deny6) > 0 || hasHostPolicy
+
+	sb.WriteString("FIREBOX_FW_CHAIN4=\"\"\n")
+	sb.WriteString("FIREBOX_FW_CHAIN6=\"\"\n")
+	appendShellArray(sb, "FIREBOX_NET_ALLOW4", allow4)
+	appendShellArray(sb, "FIREBOX_NET_ALLOW6", allow6)
+	appendShellArray(sb, "FIREBOX_NET_DENY4", deny4)
+	appendShellArray(sb, "FIREBOX_NET_DENY6", deny6)
+	appendShellArray(sb, "FIREBOX_NET_ALLOW_HOST", allowHosts)
+	appendShellArray(sb, "FIREBOX_NET_DENY_HOST", denyHosts)
+	sb.WriteString("\n")
+	sb.WriteString("cleanup_network_policy() {\n")
+	sb.WriteString("  if command -v iptables >/dev/null 2>&1 && [ -n \"${FIREBOX_FW_CHAIN4}\" ]; then\n")
+	sb.WriteString("    sudo -n iptables -D OUTPUT -j \"${FIREBOX_FW_CHAIN4}\" >/dev/null 2>&1 || true\n")
+	sb.WriteString("    sudo -n iptables -F \"${FIREBOX_FW_CHAIN4}\" >/dev/null 2>&1 || true\n")
+	sb.WriteString("    sudo -n iptables -X \"${FIREBOX_FW_CHAIN4}\" >/dev/null 2>&1 || true\n")
+	sb.WriteString("  fi\n")
+	sb.WriteString("  if command -v ip6tables >/dev/null 2>&1 && [ -n \"${FIREBOX_FW_CHAIN6}\" ]; then\n")
+	sb.WriteString("    sudo -n ip6tables -D OUTPUT -j \"${FIREBOX_FW_CHAIN6}\" >/dev/null 2>&1 || true\n")
+	sb.WriteString("    sudo -n ip6tables -F \"${FIREBOX_FW_CHAIN6}\" >/dev/null 2>&1 || true\n")
+	sb.WriteString("    sudo -n ip6tables -X \"${FIREBOX_FW_CHAIN6}\" >/dev/null 2>&1 || true\n")
+	sb.WriteString("  fi\n")
+	sb.WriteString("}\n")
+	sb.WriteString("\n")
+	sb.WriteString("add_host_rules() {\n")
+	sb.WriteString("  local family=\"$1\"\n")
+	sb.WriteString("  local tool=\"$2\"\n")
+	sb.WriteString("  local chain=\"$3\"\n")
+	sb.WriteString("  local action=\"$4\"\n")
+	sb.WriteString("  local host=\"$5\"\n")
+	sb.WriteString("  local db=\"ahostsv4\"\n")
+	sb.WriteString("  if [ \"$family\" = \"6\" ]; then db=\"ahostsv6\"; fi\n")
+	sb.WriteString("  local resolved=\"\"\n")
+	sb.WriteString("  resolved=\"$(getent \"$db\" \"$host\" 2>/dev/null | awk '{print $1}' | sort -u || true)\"\n")
+	sb.WriteString("  if [ -z \"$resolved\" ]; then return 0; fi\n")
+	sb.WriteString("  while IFS= read -r ip; do\n")
+	sb.WriteString("    [ -n \"$ip\" ] || continue\n")
+	sb.WriteString("    sudo -n \"$tool\" -A \"$chain\" -d \"$ip\" -j \"$action\"\n")
+	sb.WriteString("  done <<< \"$resolved\"\n")
+	sb.WriteString("}\n")
+	sb.WriteString("\n")
+	sb.WriteString("host_has_any_record() {\n")
+	sb.WriteString("  local host=\"$1\"\n")
+	sb.WriteString("  if getent ahostsv4 \"$host\" >/dev/null 2>&1; then return 0; fi\n")
+	sb.WriteString("  if getent ahostsv6 \"$host\" >/dev/null 2>&1; then return 0; fi\n")
+	sb.WriteString("  return 1\n")
+	sb.WriteString("}\n")
+	sb.WriteString("\n")
+	sb.WriteString("setup_network_policy() {\n")
+	if needIPv4 {
+		sb.WriteString("  if ! command -v iptables >/dev/null 2>&1; then echo \"iptables is required for IPv4 network policy enforcement\" 1>&2; exit 25; fi\n")
+	}
+	if needIPv6 {
+		sb.WriteString("  if ! command -v ip6tables >/dev/null 2>&1; then echo \"ip6tables is required for IPv6 network policy enforcement\" 1>&2; exit 25; fi\n")
+	}
+	if hasHostPolicy {
+		sb.WriteString("  if ! command -v getent >/dev/null 2>&1; then echo \"getent is required for hostname network policy enforcement\" 1>&2; exit 25; fi\n")
+		sb.WriteString("  for host in \"${FIREBOX_NET_DENY_HOST[@]}\"; do\n")
+		sb.WriteString("    if ! host_has_any_record \"$host\"; then echo \"failed to resolve hostname for network policy: ${host}\" 1>&2; exit 25; fi\n")
+		sb.WriteString("  done\n")
+		sb.WriteString("  for host in \"${FIREBOX_NET_ALLOW_HOST[@]}\"; do\n")
+		sb.WriteString("    if ! host_has_any_record \"$host\"; then echo \"failed to resolve hostname for network policy: ${host}\" 1>&2; exit 25; fi\n")
+		sb.WriteString("  done\n")
+	}
+	sb.WriteString("  local chain_base=\"FBX${RUN_ID}\"\n")
+	if needIPv4 {
+		sb.WriteString("  FIREBOX_FW_CHAIN4=\"${chain_base}4\"\n")
+		sb.WriteString("  sudo -n iptables -N \"${FIREBOX_FW_CHAIN4}\"\n")
+		sb.WriteString("  sudo -n iptables -I OUTPUT 1 -j \"${FIREBOX_FW_CHAIN4}\"\n")
+		sb.WriteString("  sudo -n iptables -A \"${FIREBOX_FW_CHAIN4}\" -o lo -j ACCEPT\n")
+		sb.WriteString("  sudo -n iptables -A \"${FIREBOX_FW_CHAIN4}\" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT\n")
+		sb.WriteString("  for entry in \"${FIREBOX_NET_DENY4[@]}\"; do sudo -n iptables -A \"${FIREBOX_FW_CHAIN4}\" -d \"$entry\" -j REJECT; done\n")
+		sb.WriteString("  for host in \"${FIREBOX_NET_DENY_HOST[@]}\"; do add_host_rules 4 iptables \"${FIREBOX_FW_CHAIN4}\" REJECT \"$host\"; done\n")
+		sb.WriteString("  for entry in \"${FIREBOX_NET_ALLOW4[@]}\"; do sudo -n iptables -A \"${FIREBOX_FW_CHAIN4}\" -d \"$entry\" -j ACCEPT; done\n")
+		sb.WriteString("  for host in \"${FIREBOX_NET_ALLOW_HOST[@]}\"; do add_host_rules 4 iptables \"${FIREBOX_FW_CHAIN4}\" ACCEPT \"$host\"; done\n")
+		if allowMode {
+			sb.WriteString("  sudo -n iptables -A \"${FIREBOX_FW_CHAIN4}\" -j REJECT\n")
+		} else {
+			sb.WriteString("  sudo -n iptables -A \"${FIREBOX_FW_CHAIN4}\" -j ACCEPT\n")
+		}
+	}
+	if needIPv6 {
+		sb.WriteString("  FIREBOX_FW_CHAIN6=\"${chain_base}6\"\n")
+		sb.WriteString("  sudo -n ip6tables -N \"${FIREBOX_FW_CHAIN6}\"\n")
+		sb.WriteString("  sudo -n ip6tables -I OUTPUT 1 -j \"${FIREBOX_FW_CHAIN6}\"\n")
+		sb.WriteString("  sudo -n ip6tables -A \"${FIREBOX_FW_CHAIN6}\" -o lo -j ACCEPT\n")
+		sb.WriteString("  sudo -n ip6tables -A \"${FIREBOX_FW_CHAIN6}\" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT\n")
+		sb.WriteString("  for entry in \"${FIREBOX_NET_DENY6[@]}\"; do sudo -n ip6tables -A \"${FIREBOX_FW_CHAIN6}\" -d \"$entry\" -j REJECT; done\n")
+		sb.WriteString("  for host in \"${FIREBOX_NET_DENY_HOST[@]}\"; do add_host_rules 6 ip6tables \"${FIREBOX_FW_CHAIN6}\" REJECT \"$host\"; done\n")
+		sb.WriteString("  for entry in \"${FIREBOX_NET_ALLOW6[@]}\"; do sudo -n ip6tables -A \"${FIREBOX_FW_CHAIN6}\" -d \"$entry\" -j ACCEPT; done\n")
+		sb.WriteString("  for host in \"${FIREBOX_NET_ALLOW_HOST[@]}\"; do add_host_rules 6 ip6tables \"${FIREBOX_FW_CHAIN6}\" ACCEPT \"$host\"; done\n")
+		if allowMode {
+			sb.WriteString("  sudo -n ip6tables -A \"${FIREBOX_FW_CHAIN6}\" -j REJECT\n")
+		} else {
+			sb.WriteString("  sudo -n ip6tables -A \"${FIREBOX_FW_CHAIN6}\" -j ACCEPT\n")
+		}
+	}
+	sb.WriteString("}\n")
+	return true
+}
+
+func appendShellArray(sb *strings.Builder, name string, values []string) {
+	sb.WriteString(name)
+	sb.WriteString("=(")
+	for i, value := range values {
+		if i > 0 {
+			sb.WriteString(" ")
+		}
+		sb.WriteString(shQuote(value))
+	}
+	sb.WriteString(")\n")
 }
 
 func shQuote(s string) string {

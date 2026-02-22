@@ -8,8 +8,18 @@ import (
 )
 
 type RuntimeConfig struct {
-	InstanceName string `json:"instance_name,omitempty"`
-	ImageName    string `json:"image_name,omitempty"`
+	InstanceName string              `json:"instance_name,omitempty"`
+	ImageName    string              `json:"image_name,omitempty"`
+	Policy       RuntimePolicyConfig `json:"policy,omitempty"`
+}
+
+type RuntimePolicyConfig struct {
+	NetworkAllow   []string `json:"network_allow,omitempty"`
+	NetworkDeny    []string `json:"network_deny,omitempty"`
+	FileAllowPaths []string `json:"file_allow_paths,omitempty"`
+	FileDenyPaths  []string `json:"file_deny_paths,omitempty"`
+	FileAllowExts  []string `json:"file_allow_exts,omitempty"`
+	FileDenyExts   []string `json:"file_deny_exts,omitempty"`
 }
 
 func LoadRuntimeConfig(path string) (RuntimeConfig, error) {

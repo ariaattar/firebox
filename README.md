@@ -20,6 +20,11 @@ Firebox provides a low-latency sandbox CLI and daemon on macOS using a Lima-host
   - `--sandbox dst|src:dst` (igloo-style alias, always CoW on)
 - Host-write safety guard:
   - direct host writes require `--allow-host-write` in non-interactive calls.
+- Policy controls:
+  - network allow/deny lists (`--network-allow`, `--network-deny`) with `nat` and `none` modes
+  - allow/deny values may be IP, CIDR, hostname, or domain (for example `10.0.0.0/24`, `github.com`)
+  - mount source path allow/deny lists (`--file-allow-path`, `--file-deny-path`)
+  - mounted file extension allow/deny lists (`--file-allow-ext`, `--file-deny-ext`)
 - Metrics endpoint and CLI:
   - p50/p95/p99/max per operation.
 
@@ -126,12 +131,65 @@ CoW off (direct host writes):
 ./firebox run --allow-host-write -v /Users/$USER/project:/workspace:rw:cow=off bash -lc 'echo test > file.txt'
 ```
 
+## Policy examples
+
+Block all network:
+
+```bash
+./firebox run --network none -- bash -lc 'curl -I https://example.com'
+```
+
+Allow domain and CIDR, deny domain:
+
+```bash
+./firebox run \
+  --network nat \
+  --network-allow github.com \
+  --network-allow 10.0.0.0/24 \
+  --network-deny snowflake.com \
+  -- bash -lc 'python -c "print(1)"'
+```
+
+Restrict mount sources by path and extension:
+
+```bash
+./firebox run \
+  --file-allow-path /Users/$USER/Documents/Code \
+  --file-deny-path /Users/$USER/Documents/Code/secrets \
+  --file-allow-ext .go \
+  --mount /Users/$USER/Documents/Code/firebox/main.go:/workspace/main.go:ro \
+  -- cat /workspace/main.go
+```
+
 ## Notes
 
 - If direct host writes fail with "mount source is not writable inside lima host", recreate `firebox-host` so mounts are writable and run again.
 - Cold provisioning paths (first Lima bring-up) can exceed 200ms; budget is enforced on warm execution paths.
 - CoW runtime state is placed in `~/.firebox-host` inside the Lima VM (persistent disk), not `/tmp`.
 - `sandbox apply` syncs CoW upperdir changes from Lima back to macOS over SSH/rsync, so apply still works even when host mounts are read-only inside the VM.
+- `--network-allow` / `--network-deny` accept IPs, CIDR blocks, hostnames, and domains (wildcards are not supported).
+- file extension policies are enforced for file mounts; directory mounts are rejected when extension policies are set.
+
+## Runtime settings JSON
+
+Global defaults can be set in `~/.firebox/state/runtime.json` and are applied to `run`, `sandbox create`, and `sandbox exec` when a request does not provide its own policy values.
+
+Example:
+
+```json
+{
+  "instance_name": "firebox-host",
+  "image_name": "devyaml",
+  "policy": {
+    "network_allow": ["github.com"],
+    "network_deny": ["snowflake.com"],
+    "file_allow_paths": ["/Users/you/Documents/Code"],
+    "file_deny_paths": ["/Users/you/Documents/Code/secrets"],
+    "file_allow_exts": [".go", ".md"],
+    "file_deny_exts": [".pem"]
+  }
+}
+```
 
 ## License
 

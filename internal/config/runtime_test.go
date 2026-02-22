@@ -10,6 +10,14 @@ func TestRuntimeConfigRoundTrip(t *testing.T) {
 	in := RuntimeConfig{
 		InstanceName: "firebox-img-dev",
 		ImageName:    "dev",
+		Policy: RuntimePolicyConfig{
+			NetworkAllow:   []string{"github.com", "10.0.0.0/24"},
+			NetworkDeny:    []string{"snowflake.com"},
+			FileAllowPaths: []string{"/Users/test/work"},
+			FileDenyPaths:  []string{"/Users/test/secrets"},
+			FileAllowExts:  []string{".go"},
+			FileDenyExts:   []string{".pem"},
+		},
 	}
 	if err := SaveRuntimeConfig(path, in); err != nil {
 		t.Fatalf("SaveRuntimeConfig() error = %v", err)
@@ -23,6 +31,18 @@ func TestRuntimeConfigRoundTrip(t *testing.T) {
 	}
 	if out.ImageName != in.ImageName {
 		t.Fatalf("ImageName = %q, want %q", out.ImageName, in.ImageName)
+	}
+	if len(out.Policy.NetworkAllow) != 2 || out.Policy.NetworkAllow[0] != "github.com" {
+		t.Fatalf("Policy.NetworkAllow = %#v, want github.com + cidr", out.Policy.NetworkAllow)
+	}
+	if len(out.Policy.NetworkDeny) != 1 || out.Policy.NetworkDeny[0] != "snowflake.com" {
+		t.Fatalf("Policy.NetworkDeny = %#v, want [snowflake.com]", out.Policy.NetworkDeny)
+	}
+	if len(out.Policy.FileAllowPaths) != 1 || out.Policy.FileAllowPaths[0] != "/Users/test/work" {
+		t.Fatalf("Policy.FileAllowPaths = %#v, want [/Users/test/work]", out.Policy.FileAllowPaths)
+	}
+	if len(out.Policy.FileDenyExts) != 1 || out.Policy.FileDenyExts[0] != ".pem" {
+		t.Fatalf("Policy.FileDenyExts = %#v, want [.pem]", out.Policy.FileDenyExts)
 	}
 }
 

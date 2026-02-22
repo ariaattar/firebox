@@ -77,6 +77,81 @@ func TestBuildRunScriptPersistentSession(t *testing.T) {
 	}
 }
 
+func TestBuildRunScriptNetworkAllowList(t *testing.T) {
+	b := &Backend{}
+	spec := model.RunSpec{
+		Command:      []string{"echo", "ok"},
+		Cow:          model.CowOn,
+		Network:      model.NetworkNAT,
+		NetworkAllow: []string{"10.0.0.0/24", "2001:db8::/64", "github.com"},
+		NetworkDeny:  []string{"192.168.1.0/24", "snowflake.com"},
+	}
+
+	script := b.buildRunScript(spec)
+	if !strings.Contains(script, "setup_network_policy") {
+		t.Fatalf("script missing network setup function:\n%s", script)
+	}
+	if !strings.Contains(script, "FIREBOX_NET_ALLOW4=('10.0.0.0/24')") {
+		t.Fatalf("script missing IPv4 allow list:\n%s", script)
+	}
+	if !strings.Contains(script, "FIREBOX_NET_ALLOW6=('2001:db8::/64')") {
+		t.Fatalf("script missing IPv6 allow list:\n%s", script)
+	}
+	if !strings.Contains(script, "FIREBOX_NET_DENY4=('192.168.1.0/24')") {
+		t.Fatalf("script missing IPv4 deny list:\n%s", script)
+	}
+	if !strings.Contains(script, "FIREBOX_NET_ALLOW_HOST=('github.com')") {
+		t.Fatalf("script missing hostname allow list:\n%s", script)
+	}
+	if !strings.Contains(script, "FIREBOX_NET_DENY_HOST=('snowflake.com')") {
+		t.Fatalf("script missing hostname deny list:\n%s", script)
+	}
+	if !strings.Contains(script, "add_host_rules 4 iptables") {
+		t.Fatalf("script missing hostname IPv4 rule builder:\n%s", script)
+	}
+	if !strings.Contains(script, "add_host_rules 6 ip6tables") {
+		t.Fatalf("script missing hostname IPv6 rule builder:\n%s", script)
+	}
+	if !strings.Contains(script, "getent is required for hostname network policy enforcement") {
+		t.Fatalf("script missing getent requirement for hostname rules:\n%s", script)
+	}
+	if !strings.Contains(script, "sudo -n iptables -A \"${FIREBOX_FW_CHAIN4}\" -j REJECT") {
+		t.Fatalf("script missing IPv4 default reject for allow-list mode:\n%s", script)
+	}
+	if !strings.Contains(script, "sudo -n ip6tables -A \"${FIREBOX_FW_CHAIN6}\" -j REJECT") {
+		t.Fatalf("script missing IPv6 default reject for allow-list mode:\n%s", script)
+	}
+}
+
+func TestBuildRunScriptNetworkNone(t *testing.T) {
+	b := &Backend{}
+	spec := model.RunSpec{
+		Command: []string{"echo", "ok"},
+		Cow:     model.CowOn,
+		Network: model.NetworkNone,
+	}
+
+	script := b.buildRunScript(spec)
+	if !strings.Contains(script, "iptables is required for IPv4 network policy enforcement") {
+		t.Fatalf("script missing IPv4 tool check:\n%s", script)
+	}
+	if !strings.Contains(script, "ip6tables is required for IPv6 network policy enforcement") {
+		t.Fatalf("script missing IPv6 tool check:\n%s", script)
+	}
+	if !strings.Contains(script, "FIREBOX_NET_ALLOW4=()") || !strings.Contains(script, "FIREBOX_NET_ALLOW6=()") {
+		t.Fatalf("script missing empty allow arrays for network=none:\n%s", script)
+	}
+	if !strings.Contains(script, "cleanup_network_policy") {
+		t.Fatalf("script missing cleanup_network_policy call:\n%s", script)
+	}
+	if !strings.Contains(script, "sudo -n iptables -A \"${FIREBOX_FW_CHAIN4}\" -j REJECT") {
+		t.Fatalf("script missing IPv4 reject-all rule for network=none:\n%s", script)
+	}
+	if !strings.Contains(script, "sudo -n ip6tables -A \"${FIREBOX_FW_CHAIN6}\" -j REJECT") {
+		t.Fatalf("script missing IPv6 reject-all rule for network=none:\n%s", script)
+	}
+}
+
 func TestSelectCowMounts(t *testing.T) {
 	dir := t.TempDir()
 	sub := filepath.Join(dir, "src")

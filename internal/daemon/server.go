@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"firebox/internal/latency"
 	"firebox/internal/model"
 	"firebox/internal/mountspec"
+	"firebox/internal/policy"
 )
 
 const (
@@ -132,12 +134,18 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-
-	if req.Spec.Cow == model.CowAuto {
-		req.Spec.Cow = model.CowOn
+	if err := s.applyRuntimePolicyDefaults(&req.Spec); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
 	}
-	if req.Spec.Network == "" {
-		req.Spec.Network = model.NetworkNAT
+
+	if err := policy.NormalizeAndValidateSpec(&req.Spec); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := policy.ValidateMounts(req.Spec); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
 	}
 
 	if mountspec.NeedsHostWriteAck(req.Spec.Mounts, req.Spec.Cow) && !req.Spec.AllowHostWrite && !req.Interactive {
@@ -178,11 +186,17 @@ func (s *Server) handleSandboxCreate(w http.ResponseWriter, r *http.Request) {
 	if req.ID == "" {
 		req.ID = fmt.Sprintf("sbx-%d", time.Now().UnixNano())
 	}
-	if req.Spec.Cow == model.CowAuto {
-		req.Spec.Cow = model.CowOn
+	if err := s.applyRuntimePolicyDefaults(&req.Spec); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
 	}
-	if req.Spec.Network == "" {
-		req.Spec.Network = model.NetworkNAT
+	if err := policy.NormalizeAndValidateSpec(&req.Spec); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := policy.ValidateMounts(req.Spec); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
 	}
 	now := time.Now().UTC()
 	sb := model.Sandbox{
@@ -341,6 +355,18 @@ func (s *Server) handleSandboxExec(w http.ResponseWriter, r *http.Request) {
 	spec.Command = req.Command
 	spec.SessionID = sb.ID
 	spec.PersistSession = true
+	if err := s.applyRuntimePolicyDefaults(&spec); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := policy.NormalizeAndValidateSpec(&spec); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := policy.ValidateMounts(spec); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	if mountspec.NeedsHostWriteAck(spec.Mounts, spec.Cow) && !spec.AllowHostWrite && !req.Interactive {
 		writeErr(w, http.StatusBadRequest, "direct host writes require --allow-host-write in non-interactive mode")
@@ -479,6 +505,43 @@ func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
 			_ = s.httpServer.Shutdown(context.Background())
 		}()
 	})
+}
+
+func (s *Server) applyRuntimePolicyDefaults(spec *model.RunSpec) error {
+	cfg, err := config.LoadRuntimeConfig(s.paths.Runtime)
+	if err != nil {
+		return fmt.Errorf("load runtime config: %w", err)
+	}
+
+	p := cfg.Policy
+	if !hasNonEmpty(spec.NetworkAllow) && len(p.NetworkAllow) > 0 {
+		spec.NetworkAllow = append([]string(nil), p.NetworkAllow...)
+	}
+	if !hasNonEmpty(spec.NetworkDeny) && len(p.NetworkDeny) > 0 {
+		spec.NetworkDeny = append([]string(nil), p.NetworkDeny...)
+	}
+	if !hasNonEmpty(spec.FileAllowPaths) && len(p.FileAllowPaths) > 0 {
+		spec.FileAllowPaths = append([]string(nil), p.FileAllowPaths...)
+	}
+	if !hasNonEmpty(spec.FileDenyPaths) && len(p.FileDenyPaths) > 0 {
+		spec.FileDenyPaths = append([]string(nil), p.FileDenyPaths...)
+	}
+	if !hasNonEmpty(spec.FileAllowExts) && len(p.FileAllowExts) > 0 {
+		spec.FileAllowExts = append([]string(nil), p.FileAllowExts...)
+	}
+	if !hasNonEmpty(spec.FileDenyExts) && len(p.FileDenyExts) > 0 {
+		spec.FileDenyExts = append([]string(nil), p.FileDenyExts...)
+	}
+	return nil
+}
+
+func hasNonEmpty(items []string) bool {
+	for _, item := range items {
+		if strings.TrimSpace(item) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func decodeJSON(r *http.Request, out any) error {
