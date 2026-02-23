@@ -62,6 +62,7 @@ type RunSpec struct {
 	Workdir        string      `json:"workdir,omitempty"`
 	SessionID      string      `json:"session_id,omitempty"`
 	PersistSession bool        `json:"persist_session,omitempty"`
+	AllowHostEnv   bool        `json:"allow_host_env,omitempty"`
 	AllowHostWrite bool        `json:"allow_host_write,omitempty"`
 	StrictBudget   bool        `json:"strict_budget"`
 	TimeoutMs      int64       `json:"timeout_ms,omitempty"`

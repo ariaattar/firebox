@@ -43,6 +43,7 @@ func newSandboxCreateCmd() *cobra.Command {
 		fileDenyExts   []string
 		profile        string
 		workdir        string
+		allowHostEnv   bool
 		allowHostWrite bool
 		strictBudget   bool
 		timeoutMs      int64
@@ -93,6 +94,7 @@ func newSandboxCreateCmd() *cobra.Command {
 				FileDenyExts:   fileDenyExts,
 				Profile:        profile,
 				Workdir:        workdir,
+				AllowHostEnv:   allowHostEnv,
 				AllowHostWrite: allowHostWrite,
 				StrictBudget:   strictBudget,
 				TimeoutMs:      timeoutMs,
@@ -122,6 +124,7 @@ func newSandboxCreateCmd() *cobra.Command {
 	cmd.Flags().StringArrayVar(&fileDenyExts, "file-deny-ext", nil, "Deny mounted file extensions (e.g. .pem)")
 	cmd.Flags().StringVar(&profile, "profile", "default", "Sandbox profile")
 	cmd.Flags().StringVarP(&workdir, "workdir", "w", "", "Working directory")
+	cmd.Flags().BoolVar(&allowHostEnv, "allow-host-env", false, "Allow workload command to access the host home mount directly (less isolated)")
 	cmd.Flags().BoolVar(&allowHostWrite, "allow-host-write", false, "Allow direct host writes for rw mounts with cow=off")
 	cmd.Flags().BoolVar(&strictBudget, "strict-budget", true, "Fail command when latency exceeds budget")
 	cmd.Flags().Int64Var(&timeoutMs, "timeout-ms", int64((5 * time.Second).Milliseconds()), "Command timeout in milliseconds")
