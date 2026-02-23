@@ -2,6 +2,7 @@ import { execCommand, ExecCommandResult } from "./process.js";
 
 export interface FireboxClientOptions {
   fireboxBin: string;
+  daemonId?: string;
 }
 
 export interface SandboxInspect {
@@ -20,9 +21,11 @@ export interface SandboxInspect {
 
 export class FireboxClient {
   private readonly fireboxBin: string;
+  private readonly daemonId?: string;
 
   constructor(options: FireboxClientOptions) {
     this.fireboxBin = options.fireboxBin;
+    this.daemonId = options.daemonId?.trim() || undefined;
   }
 
   async ensureAvailable(): Promise<void> {
@@ -208,6 +211,7 @@ export class FireboxClient {
   }
 
   private run(args: string[], timeoutMs: number): Promise<ExecCommandResult> {
-    return execCommand(this.fireboxBin, args, { timeoutMs });
+    const commandArgs = this.daemonId ? ["--daemon-id", this.daemonId, ...args] : args;
+    return execCommand(this.fireboxBin, commandArgs, { timeoutMs });
   }
 }

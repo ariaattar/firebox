@@ -37,9 +37,9 @@ type Backend struct {
 }
 
 func New(paths config.Paths) *Backend {
-	instanceName := config.DefaultInstanceName
+	instanceName := config.DefaultInstanceNameForDaemon(paths.DaemonID)
 	if cfg, err := config.LoadRuntimeConfig(paths.Runtime); err == nil {
-		instanceName = cfg.EffectiveInstanceName()
+		instanceName = cfg.EffectiveInstanceNameForDaemon(paths.DaemonID)
 	}
 
 	return &Backend{

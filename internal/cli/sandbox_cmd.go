@@ -188,7 +188,7 @@ func newSandboxRmCmd() *cobra.Command {
 			if err := client.RemoveSandbox(ctx, args[0]); err != nil {
 				return err
 			}
-			fmt.Println("removed")
+			fmt.Println(styleSuccess("removed"))
 			return nil
 		},
 	}
@@ -208,11 +208,29 @@ func newSandboxListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if len(resp.Sandboxes) == 0 {
+				fmt.Println(styleMuted("no sandboxes"))
+				return nil
+			}
+			fmt.Println(styleHeader("ID\tSTATUS\tPROFILE"))
 			for _, sb := range resp.Sandboxes {
-				fmt.Printf("%s\t%s\t%s\n", sb.ID, sb.Status, sb.Profile)
+				fmt.Printf("%s\t%s\t%s\n", sb.ID, colorSandboxStatus(string(sb.Status)), sb.Profile)
 			}
 			return nil
 		},
+	}
+}
+
+func colorSandboxStatus(status string) string {
+	switch status {
+	case "running":
+		return styleSuccess(status)
+	case "created":
+		return styleWarn(status)
+	case "stopped":
+		return styleMuted(status)
+	default:
+		return status
 	}
 }
 

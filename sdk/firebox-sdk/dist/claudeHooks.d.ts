@@ -1,6 +1,7 @@
 type HookPermissionDecision = "allow" | "ask";
 export interface ClaudeHookRunOptions {
     fireboxBin?: string;
+    daemonId?: string;
     stateFilePath?: string;
     permissionDecision?: HookPermissionDecision;
 }

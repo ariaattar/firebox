@@ -23,6 +23,7 @@ export interface FireboxSDKState {
 
 export interface FireboxSDKOptions {
   fireboxBin?: string;
+  daemonId?: string;
   stateFilePath?: string;
   defaultWorkspaceDir?: string;
   defaultImageName?: string;

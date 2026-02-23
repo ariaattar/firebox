@@ -51,8 +51,14 @@ func TestRuntimeConfigEffectiveInstanceName(t *testing.T) {
 	if got := cfg.EffectiveInstanceName(); got != DefaultInstanceName {
 		t.Fatalf("EffectiveInstanceName() = %q, want %q", got, DefaultInstanceName)
 	}
+	if got := cfg.EffectiveInstanceNameForDaemon("team-a"); got != "firebox-host-team-a" {
+		t.Fatalf("EffectiveInstanceNameForDaemon() = %q, want %q", got, "firebox-host-team-a")
+	}
 	cfg.InstanceName = "firebox-img-dev"
 	if got := cfg.EffectiveInstanceName(); got != "firebox-img-dev" {
 		t.Fatalf("EffectiveInstanceName() = %q, want %q", got, "firebox-img-dev")
+	}
+	if got := cfg.EffectiveInstanceNameForDaemon("team-a"); got != "firebox-img-dev" {
+		t.Fatalf("EffectiveInstanceNameForDaemon() = %q, want %q", got, "firebox-img-dev")
 	}
 }

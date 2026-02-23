@@ -17,12 +17,17 @@ import (
 )
 
 func newDaemonCmd() *cobra.Command {
+	var daemonID string
+
 	cmd := &cobra.Command{Use: "daemon", Short: "Manage firebox daemon"}
 
 	serve := &cobra.Command{
 		Use:    "serve",
 		Hidden: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := applyDaemonIDEnv(daemonID); err != nil {
+				return err
+			}
 			paths, err := config.ResolvePaths()
 			if err != nil {
 				return err
@@ -42,6 +47,9 @@ func newDaemonCmd() *cobra.Command {
 		Use:   "start",
 		Short: "Start daemon in background",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := applyDaemonIDEnv(daemonID); err != nil {
+				return err
+			}
 			paths, err := config.ResolvePaths()
 			if err != nil {
 				return err
@@ -54,7 +62,7 @@ func newDaemonCmd() *cobra.Command {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cancel()
 			if _, err := client.Ping(ctx); err == nil {
-				fmt.Println("fireboxd is already running")
+				fmt.Println(styleWarn("fireboxd is already running"))
 				return nil
 			}
 
@@ -87,7 +95,7 @@ func newDaemonCmd() *cobra.Command {
 				_, err := client.Ping(ctx)
 				cancel()
 				if err == nil {
-					fmt.Printf("fireboxd started (pid=%d)\n", proc.Process.Pid)
+					fmt.Println(styleSuccess(fmt.Sprintf("fireboxd started (pid=%d)", proc.Process.Pid)))
 					return nil
 				}
 				time.Sleep(150 * time.Millisecond)
@@ -100,6 +108,9 @@ func newDaemonCmd() *cobra.Command {
 		Use:   "stop",
 		Short: "Stop daemon",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := applyDaemonIDEnv(daemonID); err != nil {
+				return err
+			}
 			paths, err := config.ResolvePaths()
 			if err != nil {
 				return err
@@ -110,7 +121,7 @@ func newDaemonCmd() *cobra.Command {
 			if err := client.Shutdown(ctx); err != nil {
 				return err
 			}
-			fmt.Println("fireboxd stopped")
+			fmt.Println(styleSuccess("fireboxd stopped"))
 			return nil
 		},
 	}
@@ -119,6 +130,9 @@ func newDaemonCmd() *cobra.Command {
 		Use:   "status",
 		Short: "Show daemon status",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := applyDaemonIDEnv(daemonID); err != nil {
+				return err
+			}
 			paths, err := config.ResolvePaths()
 			if err != nil {
 				return err
@@ -130,10 +144,12 @@ func newDaemonCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("fireboxd unavailable: %w", err)
 			}
-			fmt.Printf("ok=%t pid=%d budget=%dms\n", ping.OK, ping.PID, ping.BudgetMs)
+			statusLine := fmt.Sprintf("ok=%t pid=%d budget=%dms", ping.OK, ping.PID, ping.BudgetMs)
+			fmt.Println(styleSuccess(statusLine))
 			return nil
 		},
 	}
+	cmd.PersistentFlags().StringVar(&daemonID, "id", "", "Daemon namespace id (same as --daemon-id)")
 
 	cmd.AddCommand(serve, start, stop, status)
 	return cmd

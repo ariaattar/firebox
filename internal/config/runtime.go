@@ -52,8 +52,19 @@ func SaveRuntimeConfig(path string, cfg RuntimeConfig) error {
 }
 
 func (c RuntimeConfig) EffectiveInstanceName() string {
+	return c.EffectiveInstanceNameForDaemon("")
+}
+
+func DefaultInstanceNameForDaemon(daemonID string) string {
+	if v := strings.TrimSpace(daemonID); v != "" {
+		return DefaultInstanceName + "-" + v
+	}
+	return DefaultInstanceName
+}
+
+func (c RuntimeConfig) EffectiveInstanceNameForDaemon(daemonID string) string {
 	if v := strings.TrimSpace(c.InstanceName); v != "" {
 		return v
 	}
-	return DefaultInstanceName
+	return DefaultInstanceNameForDaemon(daemonID)
 }

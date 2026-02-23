@@ -1,8 +1,10 @@
 import { execCommand } from "./process.js";
 export class FireboxClient {
     fireboxBin;
+    daemonId;
     constructor(options) {
         this.fireboxBin = options.fireboxBin;
+        this.daemonId = options.daemonId?.trim() || undefined;
     }
     async ensureAvailable() {
         const result = await this.run(["--help"], 5000);
@@ -160,6 +162,7 @@ export class FireboxClient {
         return this.run(args, timeoutMs);
     }
     run(args, timeoutMs) {
-        return execCommand(this.fireboxBin, args, { timeoutMs });
+        const commandArgs = this.daemonId ? ["--daemon-id", this.daemonId, ...args] : args;
+        return execCommand(this.fireboxBin, commandArgs, { timeoutMs });
     }
 }

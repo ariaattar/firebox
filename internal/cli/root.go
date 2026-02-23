@@ -41,11 +41,19 @@ func newRootCmd() *cobra.Command {
 		Long:          "Firebox orchestrates low-latency sandbox execution using a Lima + Firecracker backend.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if cliDaemonID == "" {
+				return nil
+			}
+			return applyDaemonIDEnv(cliDaemonID)
+		},
 	}
+	root.PersistentFlags().StringVar(&cliDaemonID, "daemon-id", "", "Daemon namespace id (isolated socket/state/runtime)")
 
 	root.AddCommand(newDaemonCmd())
 	root.AddCommand(newRunCmd())
 	root.AddCommand(newSandboxCmd())
+	root.AddCommand(newShellCmd())
 	root.AddCommand(newImageCmd())
 	root.AddCommand(newSetupCmd())
 	root.AddCommand(newMetricsCmd())

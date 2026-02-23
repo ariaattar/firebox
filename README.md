@@ -68,9 +68,69 @@ Optional flags:
 ```bash
 ./firebox daemon start
 ./firebox run echo hi
+./firebox shell
 ./firebox metrics
 ./firebox daemon stop
 ```
+
+## Management quick reference
+
+Daemon namespaces (VM-level separation):
+
+```bash
+./firebox daemon start --id team-a
+./firebox daemon status --id team-a
+./firebox daemon stop --id team-a
+```
+
+Sandbox management inside a namespace:
+
+```bash
+./firebox --daemon-id team-a sandbox list
+./firebox --daemon-id team-a sandbox inspect demo
+./firebox --daemon-id team-a sandbox rm demo
+```
+
+Runtime image management inside a namespace:
+
+```bash
+./firebox --daemon-id team-a image list
+./firebox --daemon-id team-a image use devyaml
+```
+
+Open an interactive shell in the active runtime instance (or run one command):
+
+```bash
+./firebox shell
+./firebox shell -- bash -lc 'uname -a'
+./firebox shell --instance firebox-img-dev
+./firebox --daemon-id team-a shell
+```
+
+## Multi-daemon (VM-level separation)
+
+Run isolated daemon namespaces in parallel:
+
+```bash
+./firebox daemon start --id team-a
+./firebox daemon start --id team-b
+```
+
+Target a namespace for any command:
+
+```bash
+./firebox --daemon-id team-a run -- bash -lc 'echo from-a'
+./firebox --daemon-id team-b run -- bash -lc 'echo from-b'
+./firebox --daemon-id team-a setup --file ./examples/firebox-dev.yaml
+```
+
+Notes:
+- `--daemon-id` selects daemon/socket/state/runtime namespace.
+- `daemon --id <name>` is a shorthand for daemon lifecycle commands.
+- with no explicit `instance_name` in that namespace runtime config, Firebox defaults to `firebox-host-<daemon-id>` so VMs do not collide.
+- `sandbox create --id <sandbox-id>` is unchanged and continues to mean sandbox id, not daemon id.
+- default behavior is unchanged when no daemon id is provided.
+- each daemon namespace keeps independent state files and can use different YAML/runtime image configuration.
 
 ## Sandbox usage
 
@@ -183,6 +243,8 @@ Allow direct host-home visibility (legacy/insecure mode):
 ## Runtime settings JSON
 
 Global defaults can be set in `~/.firebox/state/runtime.json` and are applied to `run`, `sandbox create`, and `sandbox exec` when a request does not provide its own policy values.
+
+When using `--daemon-id <name>`, runtime settings are isolated at `~/.firebox/daemons/<name>/state/runtime.json`.
 
 Example:
 

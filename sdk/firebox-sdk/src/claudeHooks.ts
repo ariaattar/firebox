@@ -30,6 +30,7 @@ interface ClaudeHookOutput {
 
 export interface ClaudeHookRunOptions {
   fireboxBin?: string;
+  daemonId?: string;
   stateFilePath?: string;
   permissionDecision?: HookPermissionDecision;
 }
@@ -76,6 +77,7 @@ export async function runClaudePreToolUseBashHook(
 
     const sdk = new FireboxSDK({
       fireboxBin: options.fireboxBin,
+      daemonId: options.daemonId,
       stateFilePath: options.stateFilePath,
       autoSetup: true,
       autoStartDaemon: true,
@@ -127,6 +129,7 @@ export async function installClaudeBashHook(
   const command = buildHookCommand({
     cliScriptPath: options.cliScriptPath,
     fireboxBin: options.fireboxBin,
+    daemonId: options.daemonId,
     stateFilePath: options.stateFilePath,
     permissionDecision: normalizePermissionDecision(options.permissionDecision),
   });
@@ -181,7 +184,9 @@ function defaultClaudeSettingsPath(
 
 function isAlreadyFireboxWrapped(command: string): boolean {
   const normalized = command.trim();
-  return /(^|\s)(?:\S*\/)?firebox\s+(run|sandbox\s+exec)\b/.test(normalized);
+  return /(^|\s)(?:\S*\/)?firebox(?:\s+--daemon-id\s+\S+)?\s+(run|sandbox\s+exec)\b/.test(
+    normalized,
+  );
 }
 
 async function readStdin(): Promise<string> {
@@ -207,12 +212,16 @@ function shellQuote(value: string): string {
 function buildHookCommand(options: {
   cliScriptPath: string;
   fireboxBin?: string;
+  daemonId?: string;
   stateFilePath?: string;
   permissionDecision: HookPermissionDecision;
 }): string {
   const parts: string[] = ["node", options.cliScriptPath];
   if (options.fireboxBin) {
     parts.push("--firebox-bin", options.fireboxBin);
+  }
+  if (options.daemonId) {
+    parts.push("--daemon-id", options.daemonId);
   }
   if (options.stateFilePath) {
     parts.push("--state-file", options.stateFilePath);

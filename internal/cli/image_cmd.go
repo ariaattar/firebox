@@ -82,7 +82,7 @@ func newImageBuildCmd() *cobra.Command {
 				return err
 			}
 
-			fmt.Printf("Building image %s from %s\n", name, absYAML)
+			fmt.Println(styleInfo(fmt.Sprintf("Building image %s from %s", name, absYAML)))
 			rec, err := buildImage(paths, name, absYAML, rebuild)
 			if err != nil {
 				return err
@@ -92,13 +92,13 @@ func newImageBuildCmd() *cobra.Command {
 				if err := setActiveImage(paths, rec); err != nil {
 					return err
 				}
-				fmt.Printf("Active runtime image set to %s (%s)\n", rec.Name, rec.InstanceName)
+				fmt.Println(styleSuccess(fmt.Sprintf("Active runtime image set to %s (%s)", rec.Name, rec.InstanceName)))
 				if running, err := daemonRunning(paths.SockPath); err == nil && running {
-					fmt.Println("fireboxd is running; restart daemon to apply the new image")
+					fmt.Println(styleWarn("fireboxd is running; restart daemon to apply the new image"))
 				}
 			}
 
-			fmt.Printf("Image ready: %s (instance=%s)\n", rec.Name, rec.InstanceName)
+			fmt.Println(styleSuccess(fmt.Sprintf("Image ready: %s (instance=%s)", rec.Name, rec.InstanceName)))
 			return nil
 		},
 	}
@@ -113,7 +113,7 @@ func newImageBuildCmd() *cobra.Command {
 }
 
 func newImageUseCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "use <name>",
 		Short: "Select an image as the active runtime",
 		Args:  cobra.ExactArgs(1),
@@ -137,13 +137,14 @@ func newImageUseCmd() *cobra.Command {
 			if err := setActiveImage(paths, rec); err != nil {
 				return err
 			}
-			fmt.Printf("Active runtime image set to %s (%s)\n", rec.Name, rec.InstanceName)
+			fmt.Println(styleSuccess(fmt.Sprintf("Active runtime image set to %s (%s)", rec.Name, rec.InstanceName)))
 			if running, err := daemonRunning(paths.SockPath); err == nil && running {
-				fmt.Println("fireboxd is running; restart daemon to apply the new image")
+				fmt.Println(styleWarn("fireboxd is running; restart daemon to apply the new image"))
 			}
 			return nil
 		},
 	}
+	return cmd
 }
 
 func newImageListCmd() *cobra.Command {
@@ -160,7 +161,7 @@ func newImageListCmd() *cobra.Command {
 				return err
 			}
 			if len(catalog.Images) == 0 {
-				fmt.Println("no images")
+				fmt.Println(styleMuted("no images"))
 				return nil
 			}
 
@@ -174,7 +175,7 @@ func newImageListCmd() *cobra.Command {
 			}
 
 			runtimeCfg, _ := config.LoadRuntimeConfig(paths.Runtime)
-			activeInstance := runtimeCfg.EffectiveInstanceName()
+			activeInstance := runtimeCfg.EffectiveInstanceNameForDaemon(paths.DaemonID)
 
 			names := make([]string, 0, len(catalog.Images))
 			for name := range catalog.Images {
@@ -182,7 +183,7 @@ func newImageListCmd() *cobra.Command {
 			}
 			sort.Strings(names)
 
-			fmt.Println("NAME\tINSTANCE\tSTATUS\tACTIVE\tBUILT_AT\tYAML")
+			fmt.Println(styleHeader("NAME\tINSTANCE\tSTATUS\tACTIVE\tBUILT_AT\tYAML"))
 			for _, name := range names {
 				rec := catalog.Images[name]
 				status := statuses[rec.InstanceName]
@@ -197,14 +198,38 @@ func newImageListCmd() *cobra.Command {
 					"%s\t%s\t%s\t%s\t%s\t%s\n",
 					rec.Name,
 					rec.InstanceName,
-					status,
-					active,
+					colorImageStatus(status),
+					colorActiveFlag(active),
 					rec.BuiltAt.Format(time.RFC3339),
 					rec.YAMLFile,
 				)
 			}
 			return nil
 		},
+	}
+}
+
+func colorImageStatus(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "running":
+		return styleSuccess(status)
+	case "stopped":
+		return styleWarn(status)
+	case "unknown":
+		return styleMuted(status)
+	default:
+		return status
+	}
+}
+
+func colorActiveFlag(active string) string {
+	switch strings.ToLower(strings.TrimSpace(active)) {
+	case "yes":
+		return styleSuccess(active)
+	case "no":
+		return styleMuted(active)
+	default:
+		return active
 	}
 }
 

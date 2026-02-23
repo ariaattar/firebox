@@ -20,11 +20,23 @@ TypeScript SDK for integrating Firebox with tool-style handlers (`bash`, `read`,
 
 State file default:
 
+`~/.firebox/state/firebox-sdk.json`
+
+State file default with daemon namespace (`daemonId=team-a`):
+
+`~/.firebox/daemons/team-a/state/firebox-sdk.json`
+
+Legacy fallback (read-only):
+
 `~/.config/firebox/firebox-sdk.json`
 
 Default generated image YAML path:
 
 `~/.config/firebox/firebox-default.yaml`
+
+Default generated image YAML with daemon namespace (`daemonId=team-a`):
+
+`~/.firebox/daemons/team-a/state/firebox-default.yaml`
 
 ## Install / Build
 
@@ -51,12 +63,20 @@ const read = await sdk.read("notes.txt", { sessionId, workspaceDir: process.cwd(
 console.log(read.content);
 ```
 
+Use an isolated daemon/VM namespace:
+
+```ts
+const sdk = new FireboxSDK({ daemonId: "team-a" });
+await sdk.initialize();
+```
+
 ## CLI
 
 After build:
 
 ```bash
 node dist/cli.js --firebox-bin /path/to/firebox status
+node dist/cli.js --firebox-bin /path/to/firebox --daemon-id team-a status
 node dist/cli.js --firebox-bin /path/to/firebox set-mode on-cow
 node dist/cli.js --firebox-bin /path/to/firebox set-default-image my-runtime --yaml /path/to/runtime.yaml --ensure
 node dist/cli.js --firebox-bin /path/to/firebox claude-hook install-bash --scope project-local

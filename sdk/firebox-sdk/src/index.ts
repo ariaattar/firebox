@@ -9,6 +9,7 @@ import {
   defaultGeneratedYamlPath,
   defaultStateFilePath,
   FireboxStateStore,
+  legacyStateFilePath,
 } from "./stateStore.js";
 import {
   BashResult,
@@ -63,7 +64,7 @@ export class FireboxSDK {
   private readonly options: Required<
     Pick<FireboxSDKOptions, "fireboxBin" | "defaultWorkspaceDir" | "autoSetup" | "autoStartDaemon">
   > &
-    Pick<FireboxSDKOptions, "stateFilePath" | "defaultImageName" | "defaultImageYamlPath">;
+    Pick<FireboxSDKOptions, "daemonId" | "stateFilePath" | "defaultImageName" | "defaultImageYamlPath">;
   private readonly client: FireboxClient;
   private readonly store: FireboxStateStore;
   private state: FireboxSDKState;
@@ -72,6 +73,7 @@ export class FireboxSDK {
   constructor(options: FireboxSDKOptions = {}) {
     this.options = {
       fireboxBin: options.fireboxBin ?? "firebox",
+      daemonId: options.daemonId?.trim() || undefined,
       stateFilePath: options.stateFilePath,
       defaultWorkspaceDir: options.defaultWorkspaceDir ?? process.cwd(),
       defaultImageName: options.defaultImageName,
@@ -79,11 +81,22 @@ export class FireboxSDK {
       autoSetup: options.autoSetup ?? true,
       autoStartDaemon: options.autoStartDaemon ?? true,
     };
-    const statePath = this.options.stateFilePath ?? defaultStateFilePath();
+    const hasCustomStatePath = this.options.stateFilePath !== undefined;
+    const statePath = this.options.stateFilePath ?? defaultStateFilePath(this.options.daemonId);
+    const legacyStatePath =
+      hasCustomStatePath || this.options.daemonId ? undefined : legacyStateFilePath();
     const defaultImageName = this.options.defaultImageName ?? DEFAULT_IMAGE_NAME;
-    this.store = new FireboxStateStore(statePath, defaultImageName, this.options.defaultImageYamlPath);
+    this.store = new FireboxStateStore(
+      statePath,
+      defaultImageName,
+      this.options.defaultImageYamlPath,
+      legacyStatePath,
+    );
     this.state = createDefaultState(defaultImageName, this.options.defaultImageYamlPath);
-    this.client = new FireboxClient({ fireboxBin: this.options.fireboxBin });
+    this.client = new FireboxClient({
+      fireboxBin: this.options.fireboxBin,
+      daemonId: this.options.daemonId,
+    });
   }
 
   async initialize(): Promise<FireboxSDKState> {
@@ -150,6 +163,7 @@ export class FireboxSDK {
 
     if (this.state.mode === "on-no-cow") {
       const wrappedCommand = argsToShellCommand(this.options.fireboxBin, [
+        ...this.fireboxCommandPrefix(),
         "run",
         "--strict-budget=false",
         "--allow-host-write",
@@ -175,6 +189,7 @@ export class FireboxSDK {
     }
     const binding = await this.ensureSessionSandbox(sessionId, workspaceDir);
     const wrappedCommand = argsToShellCommand(this.options.fireboxBin, [
+      ...this.fireboxCommandPrefix(),
       "sandbox",
       "exec",
       binding.sandboxId,
@@ -454,7 +469,7 @@ export class FireboxSDK {
     const imageName = this.state.image.name || DEFAULT_IMAGE_NAME;
     let yamlPath = this.state.image.yamlPath ? path.resolve(this.state.image.yamlPath) : undefined;
     if (!yamlPath && imageName === DEFAULT_IMAGE_NAME) {
-      yamlPath = defaultGeneratedYamlPath();
+      yamlPath = defaultGeneratedYamlPath(this.options.daemonId);
       await this.writeDefaultImageYaml(yamlPath);
       this.state.image.yamlPath = yamlPath;
       await this.saveState();
@@ -545,6 +560,13 @@ export class FireboxSDK {
 
   private async saveState(): Promise<void> {
     await this.store.save(this.state);
+  }
+
+  private fireboxCommandPrefix(): string[] {
+    if (!this.options.daemonId) {
+      return [];
+    }
+    return ["--daemon-id", this.options.daemonId];
   }
 }
 

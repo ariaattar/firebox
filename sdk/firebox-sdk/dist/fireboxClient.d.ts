@@ -1,6 +1,7 @@
 import { ExecCommandResult } from "./process.js";
 export interface FireboxClientOptions {
     fireboxBin: string;
+    daemonId?: string;
 }
 export interface SandboxInspect {
     id: string;
@@ -17,6 +18,7 @@ export interface SandboxInspect {
 }
 export declare class FireboxClient {
     private readonly fireboxBin;
+    private readonly daemonId?;
     constructor(options: FireboxClientOptions);
     ensureAvailable(): Promise<void>;
     daemonRunning(timeoutMs?: number): Promise<boolean>;

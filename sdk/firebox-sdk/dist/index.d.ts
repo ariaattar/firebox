@@ -33,4 +33,5 @@ export declare class FireboxSDK {
     private snapshot;
     private ensureLoaded;
     private saveState;
+    private fireboxCommandPrefix;
 }

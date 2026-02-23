@@ -4,7 +4,7 @@ import { FireboxSDK } from "./index.js";
 import { installClaudeBashHook, runClaudePreToolUseBashHook } from "./claudeHooks.js";
 function usage() {
     console.log(`firebox-sdk commands:
-  [--firebox-bin <path>] [--state-file <path>]
+  [--firebox-bin <path>] [--daemon-id <id>] [--state-file <path>]
   status
   set-mode <off|on-no-cow|on-cow>
   set-default-image <name> [--yaml <path>] [--ensure]
@@ -38,11 +38,17 @@ function isHookScope(value) {
 function parseGlobalArgs(argv) {
     const remaining = [];
     let fireboxBin;
+    let daemonId;
     let stateFilePath;
     for (let i = 0; i < argv.length; i += 1) {
         const token = argv[i];
         if (token === "--firebox-bin") {
             fireboxBin = argv[i + 1];
+            i += 1;
+            continue;
+        }
+        if (token === "--daemon-id") {
+            daemonId = argv[i + 1];
             i += 1;
             continue;
         }
@@ -53,13 +59,14 @@ function parseGlobalArgs(argv) {
         }
         remaining.push(token);
     }
-    return { fireboxBin, stateFilePath, remaining };
+    return { fireboxBin, daemonId, stateFilePath, remaining };
 }
 async function main() {
     const parsed = parseGlobalArgs(process.argv.slice(2));
     const [command, ...rest] = parsed.remaining;
     const sdk = new FireboxSDK({
         fireboxBin: parsed.fireboxBin,
+        daemonId: parsed.daemonId,
         stateFilePath: parsed.stateFilePath,
     });
     if (!command) {
@@ -105,6 +112,7 @@ async function main() {
             const permissionDecision = permission && isHookPermission(permission) ? permission : undefined;
             return runClaudePreToolUseBashHook({
                 fireboxBin: parsed.fireboxBin,
+                daemonId: parsed.daemonId,
                 stateFilePath: parsed.stateFilePath,
                 permissionDecision,
             });
@@ -126,6 +134,7 @@ async function main() {
                 settingsPath,
                 permissionDecision,
                 fireboxBin: parsed.fireboxBin,
+                daemonId: parsed.daemonId,
                 stateFilePath: parsed.stateFilePath,
                 cliScriptPath: path.resolve(process.argv[1] ?? "dist/cli.js"),
             });
