@@ -77,6 +77,45 @@ func TestBuildRunScriptPersistentSession(t *testing.T) {
 	}
 }
 
+func TestBuildRunScriptHostEnvIsolatedByDefault(t *testing.T) {
+	b := &Backend{}
+	spec := model.RunSpec{
+		Command: []string{"echo", "ok"},
+		Cow:     model.CowOn,
+	}
+
+	script := b.buildRunScript(spec)
+	if !strings.Contains(script, "unshare is required for isolated workload mode; rerun with --allow-host-env to bypass") {
+		t.Fatalf("script missing unshare requirement message:\\n%s", script)
+	}
+	if !strings.Contains(script, "HOST_ENV_MASK_DIR=\"${RUN_ROOT}/.firebox-host-env-mask\"") {
+		t.Fatalf("script missing host env mask dir:\\n%s", script)
+	}
+	if !strings.Contains(script, "unshare -m -- /bin/bash -s -- \"$HOST_ENV_HOME\" \"$HOST_ENV_MASK_DIR\" \"$WORKDIR\" \"${WORKLOAD_CMD[@]}\"") {
+		t.Fatalf("script missing isolated workload execution:\\n%s", script)
+	}
+	if !strings.Contains(script, "sudo -n mount --bind \"$mask_dir\" \"$host_home\"") {
+		t.Fatalf("script missing host home masking bind mount:\\n%s", script)
+	}
+}
+
+func TestBuildRunScriptAllowHostEnvBypassesIsolation(t *testing.T) {
+	b := &Backend{}
+	spec := model.RunSpec{
+		Command:      []string{"echo", "ok"},
+		Cow:          model.CowOn,
+		AllowHostEnv: true,
+	}
+
+	script := b.buildRunScript(spec)
+	if strings.Contains(script, "unshare -m -- /bin/bash -s --") {
+		t.Fatalf("script should not include unshare wrapper when allow_host_env=true:\\n%s", script)
+	}
+	if !strings.Contains(script, "'echo' 'ok'") {
+		t.Fatalf("script missing direct command execution:\\n%s", script)
+	}
+}
+
 func TestBuildRunScriptNetworkAllowList(t *testing.T) {
 	b := &Backend{}
 	spec := model.RunSpec{

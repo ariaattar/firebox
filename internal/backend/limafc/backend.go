@@ -1328,8 +1328,44 @@ func (b *Backend) buildRunScript(spec model.RunSpec) string {
 		sb.WriteString(shQuote(val))
 		sb.WriteString("\n")
 	}
-	sb.WriteString(joinCommand(spec.Command))
+
+	if spec.AllowHostEnv {
+		sb.WriteString(joinCommand(spec.Command))
+		sb.WriteString("\n")
+		return sb.String()
+	}
+
+	hostHomePath := ""
+	if home, err := os.UserHomeDir(); err == nil {
+		home = strings.TrimSpace(home)
+		if home != "" {
+			hostHomePath = path.Clean(home)
+		}
+	}
+	if hostHomePath == "." || hostHomePath == "/" {
+		hostHomePath = ""
+	}
+
+	sb.WriteString("if ! command -v unshare >/dev/null 2>&1; then echo \"unshare is required for isolated workload mode; rerun with --allow-host-env to bypass\" 1>&2; exit 29; fi\n")
+	sb.WriteString("HOST_ENV_HOME=")
+	sb.WriteString(shQuote(hostHomePath))
 	sb.WriteString("\n")
+	sb.WriteString("HOST_ENV_MASK_DIR=\"${RUN_ROOT}/.firebox-host-env-mask\"\n")
+	sb.WriteString("mkdir -p \"$HOST_ENV_MASK_DIR\"\n")
+	appendShellArray(&sb, "WORKLOAD_CMD", spec.Command)
+	sb.WriteString("unshare -m -- /bin/bash -s -- \"$HOST_ENV_HOME\" \"$HOST_ENV_MASK_DIR\" \"$WORKDIR\" \"${WORKLOAD_CMD[@]}\" <<'FIREBOX_ISOLATED_RUN'\n")
+	sb.WriteString("set -euo pipefail\n")
+	sb.WriteString("host_home=\"$1\"\n")
+	sb.WriteString("mask_dir=\"$2\"\n")
+	sb.WriteString("workdir=\"$3\"\n")
+	sb.WriteString("shift 3\n")
+	sb.WriteString("sudo -n mount --make-rprivate /\n")
+	sb.WriteString("if [ -n \"$host_home\" ] && [ -d \"$host_home\" ]; then\n")
+	sb.WriteString("  sudo -n mount --bind \"$mask_dir\" \"$host_home\"\n")
+	sb.WriteString("fi\n")
+	sb.WriteString("cd \"$workdir\"\n")
+	sb.WriteString("\"$@\"\n")
+	sb.WriteString("FIREBOX_ISOLATED_RUN\n")
 
 	return sb.String()
 }
